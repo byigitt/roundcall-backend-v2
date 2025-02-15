@@ -4,4 +4,6 @@ python-dotenv
 pydantic
 pydantic-settings
 motor
-pymongo 
+pymongo
+python-jose[cryptography]
+bcrypt>=4.0.1 
