@@ -5,6 +5,8 @@ from app.models.user import UserInDB, UserRole
 from app.models.lesson import LessonCreate, LessonInDB, AssignedLesson, LessonWithProgress
 from typing import List, Dict
 from datetime import datetime, UTC
+from app.core.config import settings
+from bson import ObjectId
 
 router = APIRouter()
 
@@ -26,11 +28,13 @@ async def create_lesson(
         "createdAt": datetime.now(UTC)
     }
     
-    result = await db.lessons.insert_one(lesson_dict)
-    lesson_dict["id"] = str(result.inserted_id)
+    result = await db[settings.DATABASE_NAME]["lessons"].insert_one(lesson_dict)
+    created_lesson = await db[settings.DATABASE_NAME]["lessons"].find_one({"_id": result.inserted_id})
+    created_lesson["id"] = str(created_lesson["_id"])
     
-    return LessonInDB(**lesson_dict)
+    return LessonInDB(**created_lesson)
 
+@router.get("", response_model=List[LessonInDB])
 @router.get("/", response_model=List[LessonInDB])
 async def get_lessons(
     current_user: UserInDB = Depends(get_current_user),
@@ -38,17 +42,17 @@ async def get_lessons(
 ):
     if current_user.role == UserRole.TRAINER:
         # Trainer kendi oluşturduğu dersleri görür
-        lessons = await db.lessons.find({
+        lessons = await db[settings.DATABASE_NAME]["lessons"].find({
             "createdBy": current_user.id
         }).to_list(length=None)
     else:
         # Trainee kendisine atanan dersleri görür
-        assigned_lessons = await db.assignedLessons.find({
+        assigned_lessons = await db[settings.DATABASE_NAME]["assignedLessons"].find({
             "traineeID": current_user.id
         }).to_list(length=None)
         
-        lesson_ids = [a["lessonID"] for a in assigned_lessons]
-        lessons = await db.lessons.find({
+        lesson_ids = [ObjectId(a["lessonID"]) for a in assigned_lessons]
+        lessons = await db[settings.DATABASE_NAME]["lessons"].find({
             "_id": {"$in": lesson_ids}
         }).to_list(length=None)
     
@@ -75,7 +79,7 @@ async def assign_lesson(
         )
     
     # Dersin var olduğunu kontrol et
-    lesson = await db.lessons.find_one({"_id": lesson_id})
+    lesson = await db[settings.DATABASE_NAME]["lessons"].find_one({"_id": ObjectId(lesson_id)})
     if not lesson:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -90,7 +94,7 @@ async def assign_lesson(
         )
     
     # Trainee'nin var olduğunu kontrol et
-    trainee = await db.users.find_one({"_id": trainee_id, "role": UserRole.TRAINEE})
+    trainee = await db[settings.DATABASE_NAME]["users"].find_one({"_id": ObjectId(trainee_id), "role": UserRole.TRAINEE})
     if not trainee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -98,9 +102,9 @@ async def assign_lesson(
         )
     
     # Dersin zaten atanmış olup olmadığını kontrol et
-    existing_assignment = await db.assignedLessons.find_one({
-        "lessonID": lesson_id,
-        "traineeID": trainee_id
+    existing_assignment = await db[settings.DATABASE_NAME]["assignedLessons"].find_one({
+        "lessonID": ObjectId(lesson_id),
+        "traineeID": ObjectId(trainee_id)
     })
     if existing_assignment:
         raise HTTPException(
@@ -109,14 +113,14 @@ async def assign_lesson(
         )
     
     assignment = {
-        "lessonID": lesson_id,
-        "traineeID": trainee_id,
+        "lessonID": ObjectId(lesson_id),
+        "traineeID": ObjectId(trainee_id),
         "trainerID": current_user.id,
         "status": "Assigned",
-        "assignedAt": datetime.now(UTC)
+        "assignedAt": datetime.utcnow()
     }
     
-    await db.assignedLessons.insert_one(assignment)
+    await db[settings.DATABASE_NAME]["assignedLessons"].insert_one(assignment)
     
     return {"message": "Lesson assigned successfully"}
 
@@ -133,8 +137,8 @@ async def update_lesson_status(
             detail="Only trainees can update lesson status"
         )
     
-    assigned_lesson = await db.assignedLessons.find_one({
-        "lessonID": lesson_id,
+    assigned_lesson = await db[settings.DATABASE_NAME]["assignedLessons"].find_one({
+        "lessonID": ObjectId(lesson_id),
         "traineeID": current_user.id
     })
     
@@ -150,7 +154,7 @@ async def update_lesson_status(
     elif status == "Completed":
         update_data["completedAt"] = datetime.utcnow()
     
-    await db.assignedLessons.update_one(
+    await db[settings.DATABASE_NAME]["assignedLessons"].update_one(
         {"_id": assigned_lesson["_id"]},
         {"$set": update_data}
     )
@@ -171,7 +175,7 @@ async def update_lesson(
         )
     
     # Dersin var olduğunu kontrol et
-    existing_lesson = await db.lessons.find_one({"_id": lesson_id})
+    existing_lesson = await db[settings.DATABASE_NAME]["lessons"].find_one({"_id": ObjectId(lesson_id)})
     if not existing_lesson:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -191,11 +195,11 @@ async def update_lesson(
         "updatedAt": datetime.utcnow()
     }
     
-    await db.lessons.update_one(
-        {"_id": lesson_id},
+    await db[settings.DATABASE_NAME]["lessons"].update_one(
+        {"_id": ObjectId(lesson_id)},
         {"$set": update_data}
     )
     
     # Güncellenmiş dersi getir
-    updated_lesson = await db.lessons.find_one({"_id": lesson_id})
+    updated_lesson = await db[settings.DATABASE_NAME]["lessons"].find_one({"_id": ObjectId(lesson_id)})
     return LessonInDB(**updated_lesson) 

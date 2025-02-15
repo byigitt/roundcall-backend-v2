@@ -1,7 +1,9 @@
+from typing import Any, Dict, List
+from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.database import get_database
-from app.models.user import UserCreate, UserInDB, Token, UserLogin
+from app.models.user import UserCreate, UserInDB, Token, UserLogin, UserRole
 from app.core.config import settings
 from app.core.security import create_access_token, create_refresh_token, verify_password, get_password_hash
 from app.core.deps import get_current_user, get_db
@@ -9,45 +11,10 @@ from datetime import datetime, timedelta, UTC
 
 router = APIRouter()
 
-@router.post("/", 
-    response_model=UserInDB,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a new user",
-    response_description="The created user"
-)
-async def create_user(
-    user: UserCreate,
-    db: AsyncIOMotorClient = Depends(get_database)
-):
-    """
-    Create a new user with the following information:
-
-    - **username**: unique username for identification
-    - **email**: unique email address
-    - **password**: secure password
-    - **full_name**: optional full name
-    
-    Returns the created user without the password hash.
-    """
-    # Check if user exists
-    existing_user = await db[settings.DATABASE_NAME]["users"].find_one(
-        {"$or": [{"username": user.username}, {"email": user.email}]}
-    )
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username or email already registered"
-        )
-
-    user_dict = user.model_dump()
-    result = await db[settings.DATABASE_NAME]["users"].insert_one(user_dict)
-    created_user = await db[settings.DATABASE_NAME]["users"].find_one({"_id": result.inserted_id})
-    return UserInDB(**created_user)
-
 @router.post("/register", response_model=UserInDB, status_code=status.HTTP_201_CREATED)
 async def register_user(user: UserCreate, db=Depends(get_db)):
     # Email kontrolü
-    existing_user = await db.users.find_one({"email": user.email})
+    existing_user = await db[settings.DATABASE_NAME]["users"].find_one({"email": user.email})
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -63,10 +30,11 @@ async def register_user(user: UserCreate, db=Depends(get_db)):
         "updatedAt": datetime.now(UTC)
     }
     
-    result = await db.users.insert_one(db_user)
-    db_user["id"] = str(result.inserted_id)
+    result = await db[settings.DATABASE_NAME]["users"].insert_one(db_user)
+    created_user = await db[settings.DATABASE_NAME]["users"].find_one({"_id": result.inserted_id})
+    created_user["id"] = str(created_user["_id"])
     
-    return UserInDB(**db_user)
+    return UserInDB(**created_user)
 
 @router.post("/login", response_model=Token)
 async def login(user_data: UserLogin, db=Depends(get_db)):
@@ -108,5 +76,62 @@ async def refresh_token(current_user: UserInDB = Depends(get_current_user)):
     }
 
 @router.get("/me", response_model=UserInDB)
-async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
-    return current_user 
+async def get_current_user(current_user: UserInDB = Depends(get_current_user)):
+    try:
+        return current_user
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get("/assigned-trainees", response_model=List[Dict[str, Any]])
+async def get_all_assigned_trainees(
+    current_user: UserInDB = Depends(get_current_user),
+    db=Depends(get_db)
+):
+    if current_user.role != UserRole.TRAINER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only trainers can view assigned trainees"
+        )
+    
+    # Trainer'ın atadığı tüm dersleri bul
+    assigned_lessons = await db[settings.DATABASE_NAME]["assignedLessons"].find({
+        "trainerID": current_user.id
+    }).to_list(length=None)
+    
+    if not assigned_lessons:
+        return []
+    
+    # Unique trainee ID'lerini topla
+    trainee_ids = list(set(ObjectId(a["traineeID"]) for a in assigned_lessons))
+    
+    # Trainee bilgilerini çek
+    trainees = await db[settings.DATABASE_NAME]["users"].find({
+        "_id": {"$in": trainee_ids}
+    }).to_list(length=None)
+    
+    # Her trainee için atanmış dersleri ve durumlarını topla
+    result = []
+    for trainee in trainees:
+        trainee_assignments = [a for a in assigned_lessons if str(a["traineeID"]) == str(trainee["_id"])]
+        
+        # Her trainee için özet bilgileri hesapla
+        total_lessons = len(trainee_assignments)
+        completed_lessons = sum(1 for a in trainee_assignments if a["status"] == "Completed")
+        in_progress_lessons = sum(1 for a in trainee_assignments if a["status"] == "In Progress")
+        
+        result.append({
+            "id": str(trainee["_id"]),
+            "email": trainee["email"],
+            "firstName": trainee["firstName"],
+            "lastName": trainee["lastName"],
+            "totalAssignedLessons": total_lessons,
+            "completedLessons": completed_lessons,
+            "inProgressLessons": in_progress_lessons,
+            "notStartedLessons": total_lessons - (completed_lessons + in_progress_lessons),
+            "completionRate": round((completed_lessons / total_lessons * 100), 2) if total_lessons > 0 else 0
+        })
+    
+    return result
