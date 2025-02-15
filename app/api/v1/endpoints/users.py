@@ -5,7 +5,7 @@ from app.models.user import UserCreate, UserInDB, Token, UserLogin
 from app.core.config import settings
 from app.core.security import create_access_token, create_refresh_token, verify_password, get_password_hash
 from app.core.deps import get_current_user, get_db
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 router = APIRouter()
 
@@ -44,7 +44,7 @@ async def create_user(
     created_user = await db[settings.DATABASE_NAME]["users"].find_one({"_id": result.inserted_id})
     return UserInDB(**created_user)
 
-@router.post("/register", response_model=UserInDB)
+@router.post("/register", response_model=UserInDB, status_code=status.HTTP_201_CREATED)
 async def register_user(user: UserCreate, db=Depends(get_db)):
     # Email kontrolü
     existing_user = await db.users.find_one({"email": user.email})
@@ -57,10 +57,10 @@ async def register_user(user: UserCreate, db=Depends(get_db)):
     # Kullanıcı oluşturma
     hashed_password = get_password_hash(user.password)
     db_user = {
-        **user.dict(exclude={"password"}),
+        **user.model_dump(exclude={"password"}),
         "password": hashed_password,
-        "createdAt": datetime.utcnow(),
-        "updatedAt": datetime.utcnow()
+        "createdAt": datetime.now(UTC),
+        "updatedAt": datetime.now(UTC)
     }
     
     result = await db.users.insert_one(db_user)

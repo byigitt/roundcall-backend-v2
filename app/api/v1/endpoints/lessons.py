@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List
-from app.models.lesson import LessonCreate, LessonInDB, AssignedLesson, LessonWithProgress
-from app.models.user import UserInDB, UserRole
+from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.deps import get_current_user, get_db
-from datetime import datetime
+from app.models.user import UserInDB, UserRole
+from app.models.lesson import LessonCreate, LessonInDB, AssignedLesson, LessonWithProgress
+from typing import List, Dict
+from datetime import datetime, UTC
 
 router = APIRouter()
 
-@router.post("/", response_model=LessonInDB)
+@router.post("/", response_model=LessonInDB, status_code=status.HTTP_201_CREATED)
 async def create_lesson(
     lesson: LessonCreate,
     current_user: UserInDB = Depends(get_current_user),
@@ -19,41 +20,44 @@ async def create_lesson(
             detail="Only trainers can create lessons"
         )
     
-    db_lesson = {
-        **lesson.dict(),
+    lesson_dict = {
+        **lesson.model_dump(),
         "createdBy": current_user.id,
-        "createdAt": datetime.utcnow()
+        "createdAt": datetime.now(UTC)
     }
     
-    result = await db.lessons.insert_one(db_lesson)
-    db_lesson["id"] = str(result.inserted_id)
+    result = await db.lessons.insert_one(lesson_dict)
+    lesson_dict["id"] = str(result.inserted_id)
     
-    return LessonInDB(**db_lesson)
+    return LessonInDB(**lesson_dict)
 
-@router.get("/", response_model=List[LessonWithProgress])
+@router.get("/", response_model=List[LessonInDB])
 async def get_lessons(
     current_user: UserInDB = Depends(get_current_user),
     db=Depends(get_db)
 ):
     if current_user.role == UserRole.TRAINER:
         # Trainer kendi oluşturduğu dersleri görür
-        cursor = db.lessons.find({"createdBy": current_user.id})
+        lessons = await db.lessons.find({
+            "createdBy": current_user.id
+        }).to_list(length=None)
     else:
         # Trainee kendisine atanan dersleri görür
-        assigned = await db.assignedLessons.find(
-            {"traineeID": current_user.id}
-        ).to_list(length=None)
+        assigned_lessons = await db.assignedLessons.find({
+            "traineeID": current_user.id
+        }).to_list(length=None)
         
-        lesson_ids = [a["lessonID"] for a in assigned]
-        cursor = db.lessons.find({"_id": {"$in": lesson_ids}})
+        lesson_ids = [a["lessonID"] for a in assigned_lessons]
+        lessons = await db.lessons.find({
+            "_id": {"$in": lesson_ids}
+        }).to_list(length=None)
     
-    lessons = await cursor.to_list(length=None)
-    return [LessonWithProgress(**lesson) for lesson in lessons]
+    return [LessonInDB(**{**l, "id": str(l["_id"])}) for l in lessons]
 
-@router.post("/{lesson_id}/assign")
+@router.post("/{lesson_id}/assign", response_model=Dict[str, str])
 async def assign_lesson(
     lesson_id: str,
-    trainee_id: str,
+    data: Dict[str, str],
     current_user: UserInDB = Depends(get_current_user),
     db=Depends(get_db)
 ):
@@ -61,6 +65,13 @@ async def assign_lesson(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only trainers can assign lessons"
+        )
+    
+    trainee_id = data.get("trainee_id")
+    if not trainee_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="trainee_id is required"
         )
     
     # Dersin var olduğunu kontrol et
@@ -71,6 +82,13 @@ async def assign_lesson(
             detail="Lesson not found"
         )
     
+    # Dersin trainer'ı olduğunu kontrol et
+    if lesson["createdBy"] != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only assign your own lessons"
+        )
+    
     # Trainee'nin var olduğunu kontrol et
     trainee = await db.users.find_one({"_id": trainee_id, "role": UserRole.TRAINEE})
     if not trainee:
@@ -79,15 +97,27 @@ async def assign_lesson(
             detail="Trainee not found"
         )
     
-    assigned_lesson = {
+    # Dersin zaten atanmış olup olmadığını kontrol et
+    existing_assignment = await db.assignedLessons.find_one({
+        "lessonID": lesson_id,
+        "traineeID": trainee_id
+    })
+    if existing_assignment:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Lesson already assigned to this trainee"
+        )
+    
+    assignment = {
         "lessonID": lesson_id,
         "traineeID": trainee_id,
         "trainerID": current_user.id,
         "status": "Assigned",
-        "maxAttempts": 1
+        "assignedAt": datetime.now(UTC)
     }
     
-    await db.assignedLessons.insert_one(assigned_lesson)
+    await db.assignedLessons.insert_one(assignment)
+    
     return {"message": "Lesson assigned successfully"}
 
 @router.put("/{lesson_id}/status")
