@@ -70,7 +70,7 @@ async def register_user(user: UserCreate, db=Depends(get_db)):
 
 @router.post("/login", response_model=Token)
 async def login(user_data: UserLogin, db=Depends(get_db)):
-    user = await db.users.find_one({"email": user_data.email})
+    user = await db[settings.DATABASE_NAME]["users"].find_one({"email": user_data.email})
     if not user or not verify_password(user_data.password, user["password"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
