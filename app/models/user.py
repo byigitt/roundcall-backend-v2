@@ -12,6 +12,7 @@ class UserBase(BaseModel):
     firstName: str
     lastName: str
     role: UserRole
+    department: str
 
 class UserCreate(UserBase):
     password: str
