@@ -6,8 +6,9 @@ from app.core.config import settings
 from app.core.security import SECRET_KEY, ALGORITHM
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.database import get_database
+from app.models.user import UserInDB
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/users/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/users/login")
 
 async def get_db() -> AsyncIOMotorClient:
     return await get_database()
@@ -15,7 +16,7 @@ async def get_db() -> AsyncIOMotorClient:
 async def get_current_user(
     db: AsyncIOMotorClient = Depends(get_db),
     token: str = Depends(oauth2_scheme)
-) -> dict:
+) -> UserInDB:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -32,4 +33,6 @@ async def get_current_user(
     user = await db.users.find_one({"_id": user_id})
     if user is None:
         raise credentials_exception
-    return user 
+    
+    user["id"] = str(user["_id"])
+    return UserInDB(**user) 
