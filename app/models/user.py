@@ -1,20 +1,36 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime
+from enum import Enum
+
+class UserRole(str, Enum):
+    TRAINER = "Trainer"
+    TRAINEE = "Trainee"
 
 class UserBase(BaseModel):
-    username: str
-    email: str
-    full_name: Optional[str] = None
-    disabled: Optional[bool] = False
+    email: EmailStr
+    firstName: str
+    lastName: str
+    role: UserRole
 
 class UserCreate(UserBase):
     password: str
 
-class UserInDB(UserBase):
-    id: str = Field(alias="_id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
 
-    class Config:
-        populate_by_name = True 
+class UserInDB(UserBase):
+    id: str
+    createdAt: datetime
+    updatedAt: Optional[datetime] = None
+
+class Token(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+class TokenPayload(BaseModel):
+    sub: str
+    exp: int
+    role: UserRole 

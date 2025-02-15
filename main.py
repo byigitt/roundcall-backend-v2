@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import connect_to_mongo, close_mongo_connection
 from app.core.config import settings
+from app.api.v1.api import api_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -37,7 +38,8 @@ app = FastAPI(
             "name": "calls",
             "description": "Manage calls and call-related operations.",
         },
-    ]
+    ],
+    openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
 # CORS middleware configuration
@@ -62,8 +64,7 @@ async def root():
     return {"message": "Welcome to RoundCall API"}
 
 # Include routers
-from app.api.v1.endpoints import users
-app.include_router(users.router, prefix=f"{settings.API_V1_STR}/users", tags=["users"])
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 if __name__ == "__main__":
     import uvicorn
