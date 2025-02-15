@@ -1,0 +1,47 @@
+Trainee:
+- Bu grup trainerler tarafından gelecek olan lessonları okuyacak, izleyecek ve halletikten sonra soruları cevaplayacak. Bu yüzden her bir lessonun sorusu olacak.
+- Bu grup, kendi yaptığı lessonda ilerlemesini görebilecek.
+- Bu grup, eğer kendilerine atanırsa chat bot ile konuşabilecek.
+
+{ Username, Email, Password, First Name, Last Name, isTrainer }
+-> Assigned Lessons
+	-> { Lesson ID, Status, Assigned By, Started At, Completed At }
+-> Solved Questions
+	-> { Question ID, Kaç soruyu doğru, kaçını yanlış yaptığı, ne zaman yaptığı } 
+
+Trainer:
+- Bu grup, lesson oluşturabilecek. Oluşturduğu lesson'u görebilecek, lesson'u editleyebilecek, lesson'u silebilecek, lesson'u başka bir trainee'ye atayabilecek.
+- Bu grup, atanan trainee'lerin ne kadar ilerleme kat ettiğini görüntüleyebilecek. Kaçının bitirdiğini ve kaçının başladığını ve kaçının şu anda in progress olduğunu görüntüleyebilecek.
+
+Lesson:
+ -> Questions (sorular, eğitimin içerisinde)
+	-> Question 1
+		-> Options 1 (Option 1, Option 2)
+		-> Correct Answer Order
+ -> Title
+ -> Description
+ -> Content Type (sadece text, video, zamanlı text, both)
+ -> Lesson Content (array şeklinde olursa birden fazla content görürüz, kullanıcı skipleyerek okur)
+ -> Created By
+
+
+MongoDB Database Schema:
+
+User
+	_id
+	email
+	password
+	firstName
+	lastName
+	isTrainer
+	assignedLessons: [{ _id, lessonID, status, assignedBy, startedAt, completedAt, questions: [{ _id, solved, correct, solvedAt }] }]
+	
+Lesson
+	_id
+	title
+	description
+	contentType
+	textContent
+	videoURL?
+	timeBased: null
+	
