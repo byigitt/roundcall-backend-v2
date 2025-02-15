@@ -29,21 +29,63 @@ Lesson:
 
 MongoDB Database Schema:
 
-User
-	_id
-	email
-	password
-	firstName
-	lastName
-	isTrainer
-	assignedLessons: [{ _id, lessonID, status, assignedBy, startedAt, completedAt, questions: [{ _id, solved, correct, solvedAt }] }]
-	
-Lesson
-	_id
-	title
-	description
-	contentType
-	textContent
-	videoURL?
-	timeBased: null
+Table Users {
+  _id UUID [primary key]
+  email VARCHAR(255) [unique, not null]
+  password VARCHAR(255) [not null]
+  firstName VARCHAR(100) [not null]
+  lastName VARCHAR(100) [not null]
+  role ENUM('Trainer', 'Trainee') [not null]
+  createdAt TIMESTAMP [default: '2025-01-01 00:00:00']
+  updatedAt TIMESTAMP
+}
+
+Table Lessons {
+  _id UUID [primary key]
+  title VARCHAR(255) [not null]
+  description TEXT
+  contentType ENUM('Text', 'Video', 'Both') [not null]
+  textContent TEXT
+  videoURL VARCHAR(500)
+  timeBased INTEGER
+  createdBy UUID [not null, ref: > Users._id]
+  createdAt TIMESTAMP [default: '2025-01-01 00:00:00']
+}
+
+Table AssignedLessons {
+  _id UUID [primary key]
+  lessonID UUID [not null, ref: > Lessons._id]
+  traineeID UUID [not null, ref: > Users._id]
+  trainerID UUID [not null, ref: > Users._id]
+  status ENUM('Assigned', 'In Progress', 'Completed') [not null, default: 'Assigned']
+  startedAt TIMESTAMP
+  completedAt TIMESTAMP
+  maxAttempts INTEGER [default: 1]
+}
+
+Table Questions {
+  _id UUID [primary key]
+  lessonID UUID [not null, ref: > Lessons._id]
+  trainerID UUID [not null, ref: > Users._id]
+  questionText TEXT [not null]
+  options JSONB [not null] // {'A': 'Option 1', 'B': 'Option 2', 'C': 'Option 3', 'D': 'Option 4'}
+  correctAnswer VARCHAR(10) [not null] // 'A', 'B', 'C', 'D'
+  timeLimit INTEGER
+  createdAt TIMESTAMP [default: '2025-01-01 00:00:00']
+}
+
+Table Analytics {
+  _id UUID [primary key]
+  trainerID UUID [not null, ref: > Users._id]
+  traineeID UUID [not null, ref: > Users._id]
+  lessonID UUID [not null, ref: > Lessons._id]
+  totalQuestions INTEGER [not null]
+  correctAnswers INTEGER [not null]
+  avgResponseTime FLOAT
+  attempts INTEGER [not null]
+  generatedAt TIMESTAMP [default: '2025-01-01 00:00:00']
+}
+
+
+
 	
