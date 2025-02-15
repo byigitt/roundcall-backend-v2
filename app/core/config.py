@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "RoundCallv2"
     MONGODB_URL: str = "mongodb://localhost:27017"
     DATABASE_NAME: str = "roundcallv2"
+    GOOGLE_API_KEY: str = ""  # .env'den alınacak
     
     class Config:
         case_sensitive = True
