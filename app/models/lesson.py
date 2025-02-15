@@ -23,6 +23,7 @@ class LessonInDB(LessonBase):
     id: str
     createdBy: str
     createdAt: datetime
+    updatedAt: Optional[datetime] = None
 
 class LessonStatus(str, Enum):
     ASSIGNED = "Assigned"

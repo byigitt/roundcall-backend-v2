@@ -125,4 +125,47 @@ async def update_lesson_status(
         {"$set": update_data}
     )
     
-    return {"message": "Lesson status updated successfully"} 
+    return {"message": "Lesson status updated successfully"}
+
+@router.put("/{lesson_id}", response_model=LessonInDB)
+async def update_lesson(
+    lesson_id: str,
+    lesson_update: LessonCreate,
+    current_user: UserInDB = Depends(get_current_user),
+    db=Depends(get_db)
+):
+    if current_user.role != UserRole.TRAINER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only trainers can update lessons"
+        )
+    
+    # Dersin var olduğunu kontrol et
+    existing_lesson = await db.lessons.find_one({"_id": lesson_id})
+    if not existing_lesson:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lesson not found"
+        )
+    
+    # Dersin trainer'ı olduğunu kontrol et
+    if existing_lesson["createdBy"] != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only update your own lessons"
+        )
+    
+    # Dersi güncelle
+    update_data = {
+        **lesson_update.dict(),
+        "updatedAt": datetime.utcnow()
+    }
+    
+    await db.lessons.update_one(
+        {"_id": lesson_id},
+        {"$set": update_data}
+    )
+    
+    # Güncellenmiş dersi getir
+    updated_lesson = await db.lessons.find_one({"_id": lesson_id})
+    return LessonInDB(**updated_lesson) 
