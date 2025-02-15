@@ -1,13 +1,13 @@
-from pydantic import BaseModel, Field
-from typing import Dict, Optional
+from pydantic import BaseModel
 from datetime import datetime
+from typing import Dict
 
 class QuestionBase(BaseModel):
     lessonID: str
     questionText: str
-    options: Dict[str, str]  # {'A': 'Option 1', 'B': 'Option 2', ...}
+    options: Dict[str, str]  # {"A": "Option 1", "B": "Option 2", ...}
     correctAnswer: str
-    timeLimit: Optional[int] = None
+    timeLimit: int
 
 class QuestionCreate(QuestionBase):
     pass
@@ -17,14 +17,12 @@ class QuestionInDB(QuestionBase):
     trainerID: str
     createdAt: datetime
 
-class QuestionResponse(BaseModel):
+class QuestionAnswer(BaseModel):
     questionID: str
     selectedAnswer: str
-    responseTime: float  # saniye cinsinden
+    responseTime: float
 
-class QuestionResult(BaseModel):
-    questionID: str
+class AnswerResponse(BaseModel):
     isCorrect: bool
     selectedAnswer: str
-    correctAnswer: str
-    responseTime: float 
+    correctAnswer: str 
