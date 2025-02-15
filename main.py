@@ -1,11 +1,43 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import connect_to_mongo, close_mongo_connection
+from app.core.config import settings
 
 app = FastAPI(
-    title="RoundCall API",
-    description="Backend API for RoundCall",
-    version="2.0.0"
+    title=settings.PROJECT_NAME,
+    description="""
+    RoundCall API documentation.
+    
+    ## Users
+    You can:
+    * Create users
+    * Get user information
+    * Update users
+    * Delete users
+    
+    ## Authentication
+    * JWT token authentication
+    * OAuth2 with Password flow
+    """,
+    version="2.0.0",
+    contact={
+        "name": "Barış",
+        "url": "https://github.com/byigitt/roundcall-backend-v2",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    openapi_tags=[
+        {
+            "name": "users",
+            "description": "Operations with users. The **login** logic is also here.",
+        },
+        {
+            "name": "calls",
+            "description": "Manage calls and call-related operations.",
+        },
+    ]
 )
 
 # CORS middleware configuration
@@ -25,9 +57,13 @@ async def startup_db_client():
 async def shutdown_db_client():
     await close_mongo_connection()
 
-@app.get("/")
+@app.get("/", tags=["root"])
 async def root():
     return {"message": "Welcome to RoundCall API"}
+
+# Include routers
+from app.api.v1.endpoints import users
+app.include_router(users.router, prefix=f"{settings.API_V1_STR}/users", tags=["users"])
 
 if __name__ == "__main__":
     import uvicorn
