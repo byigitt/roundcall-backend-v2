@@ -1,3 +1,5 @@
+Hem traineeler hem de trainerler login ve register olabiliyorlar. Register olurlarken bunun seçimini yapacaklar. Login veya register olduktan sonra token sistemi ile biz bunu kaydedebileceğiz cookie olarak. Refresh token ile de tekrar login yapabilecekler.
+
 Trainee:
 - Bu grup trainerler tarafından gelecek olan lessonları okuyacak, izleyecek ve halletikten sonra soruları cevaplayacak. Bu yüzden her bir lessonun sorusu olacak.
 - Bu grup, kendi yaptığı lessonda ilerlemesini görebilecek.
