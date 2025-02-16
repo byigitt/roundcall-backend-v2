@@ -3,7 +3,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.deps import get_current_user, get_db
 from app.models.user import UserInDB, UserRole
 from app.models.chatbot import ChatMessage, ChatSession, ChatResponse
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from typing import List, Dict
 import google.generativeai as genai
 from app.core.config import settings
@@ -50,11 +50,11 @@ async def start_chat_session(
             {
                 "role": "customer",
                 "content": HAPPY_CUSTOMER_PROFILE["başlangıç"],
-                "timestamp": datetime.now(UTC)
+                "timestamp": datetime.now(timezone.utc)
             }
         ],
-        "createdAt": datetime.now(UTC),
-        "updatedAt": datetime.now(UTC),
+        "createdAt": datetime.now(timezone.utc),
+        "updatedAt": datetime.now(timezone.utc),
         "isActive": True,
         "collectedInfo": {
             "fiyat": False,
@@ -95,7 +95,7 @@ async def send_message(
     agent_message = {
         "role": "agent",
         "content": message,
-        "timestamp": datetime.now(UTC)
+        "timestamp": datetime.now(timezone.utc)
     }
     
     # Model'i başlat
@@ -135,7 +135,7 @@ async def send_message(
     customer_message = {
         "role": "customer",
         "content": next_customer_message,
-        "timestamp": datetime.now(UTC)
+        "timestamp": datetime.now(timezone.utc)
     }
 
     # Veritabanını güncelle
@@ -144,7 +144,7 @@ async def send_message(
         {
             "$push": {"messages": {"$each": [agent_message, customer_message]}},
             "$set": {
-                "updatedAt": datetime.now(UTC),
+                "updatedAt": datetime.now(timezone.utc),
                 "collectedInfo": collected_info
             }
         }

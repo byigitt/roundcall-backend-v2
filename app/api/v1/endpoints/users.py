@@ -7,7 +7,7 @@ from app.models.user import UserCreate, UserInDB, Token, UserLogin, UserRole
 from app.core.config import settings
 from app.core.security import create_access_token, create_refresh_token, verify_password, get_password_hash
 from app.core.deps import get_current_user, get_db
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 
 router = APIRouter()
 
@@ -26,8 +26,8 @@ async def register_user(user: UserCreate, db=Depends(get_db)):
     db_user = {
         **user.model_dump(exclude={"password"}),
         "password": hashed_password,
-        "createdAt": datetime.now(UTC),
-        "updatedAt": datetime.now(UTC)
+        "createdAt": datetime.now(timezone.utc),
+        "updatedAt": datetime.now(timezone.utc)
     }
     
     result = await db[settings.DATABASE_NAME]["users"].insert_one(db_user)

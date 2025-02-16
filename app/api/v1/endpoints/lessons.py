@@ -4,7 +4,7 @@ from app.core.deps import get_current_user, get_db
 from app.models.user import UserInDB, UserRole
 from app.models.lesson import LessonCreate, LessonInDB, AssignedLesson, LessonWithProgress
 from typing import List, Dict, Any
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from app.core.config import settings
 from bson import ObjectId
 
@@ -30,7 +30,7 @@ async def create_lesson(
         **lesson.model_dump(exclude={"questions"}),  # Exclude questions to handle them separately
         "questions": questions,  # Add converted questions
         "createdBy": str(current_user.id),
-        "createdAt": datetime.now(UTC)
+        "createdAt": datetime.now(timezone.utc)
     }
     
     result = await db[settings.DATABASE_NAME]["lessons"].insert_one(lesson_dict)
@@ -134,7 +134,7 @@ async def assign_lesson(
         "traineeID": str(trainee["_id"]),
         "trainerID": str(current_user.id),
         "status": "Assigned",
-        "assignedAt": datetime.utcnow()
+        "assignedAt": datetime.now(timezone.utc)
     }
     
     await db[settings.DATABASE_NAME]["assignedLessons"].insert_one(assignment)
@@ -167,9 +167,9 @@ async def update_lesson_status(
     
     update_data = {"status": status}
     if status == "In Progress" and not assigned_lesson.get("startedAt"):
-        update_data["startedAt"] = datetime.utcnow()
+        update_data["startedAt"] = datetime.now(timezone.utc)
     elif status == "Completed":
-        update_data["completedAt"] = datetime.utcnow()
+        update_data["completedAt"] = datetime.now(timezone.utc)
     
     await db[settings.DATABASE_NAME]["assignedLessons"].update_one(
         {"_id": assigned_lesson["_id"]},
@@ -209,7 +209,7 @@ async def update_lesson(
     # Dersi güncelle
     update_data = {
         **lesson_update.dict(),
-        "updatedAt": datetime.utcnow()
+        "updatedAt": datetime.now(timezone.utc)
     }
     
     await db[settings.DATABASE_NAME]["lessons"].update_one(
@@ -396,7 +396,7 @@ async def patch_lesson(
     # Prepare update data
     update_data = {
         **lesson_update,
-        "updatedAt": datetime.now(UTC)
+        "updatedAt": datetime.now(timezone.utc)
     }
     
     # If questions are being updated, ensure they are in the correct format
@@ -453,14 +453,14 @@ async def update_assigned_lesson_progress(
         # Prepare update data
         update_data = {
             "status": progress_data.get("status", assigned_lesson.get("status")),
-            "updatedAt": datetime.now(UTC)
+            "updatedAt": datetime.now(timezone.utc)
         }
         
         # Add timestamps based on status
         if update_data["status"] == "In Progress" and not assigned_lesson.get("startedAt"):
-            update_data["startedAt"] = datetime.now(UTC)
+            update_data["startedAt"] = datetime.now(timezone.utc)
         elif update_data["status"] == "Completed" and not assigned_lesson.get("completedAt"):
-            update_data["completedAt"] = datetime.now(UTC)
+            update_data["completedAt"] = datetime.now(timezone.utc)
         
         # Update the assigned lesson
         await db[settings.DATABASE_NAME]["assignedLessons"].update_one(

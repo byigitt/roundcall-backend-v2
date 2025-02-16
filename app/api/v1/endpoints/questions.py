@@ -3,8 +3,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.deps import get_current_user, get_db
 from app.models.user import UserInDB, UserRole
 from app.models.question import QuestionCreate, QuestionInDB, QuestionAnswer, AnswerResponse
-from typing import List
-from datetime import datetime, UTC
+from typing import List, Dict, Any
+from datetime import datetime, timezone
 
 router = APIRouter()
 
@@ -38,7 +38,7 @@ async def create_question(
     question_dict = {
         **question.model_dump(),
         "trainerID": current_user.id,
-        "createdAt": datetime.now(UTC)
+        "createdAt": datetime.now(timezone.utc)
     }
     
     result = await db.questions.insert_one(question_dict)
@@ -160,7 +160,7 @@ async def answer_question(
             "correctAnswers": 1 if is_correct else 0,
             "avgResponseTime": answer.responseTime,
             "attempts": 1,
-            "generatedAt": datetime.now(UTC)
+            "generatedAt": datetime.now(timezone.utc)
         }
         await db.analytics.insert_one(analytics)
     

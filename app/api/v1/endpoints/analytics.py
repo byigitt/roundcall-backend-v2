@@ -3,8 +3,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.deps import get_current_user, get_db
 from app.models.user import UserInDB, UserRole
 from app.models.analytics import AnalyticsInDB, LessonProgress
-from typing import List
-from datetime import datetime, UTC
+from typing import List, Dict, Any
+from datetime import datetime, timezone
 
 router = APIRouter()
 
