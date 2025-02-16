@@ -24,6 +24,7 @@ A modern learning management system that facilitates interaction between trainer
 - Answer lesson questions and get immediate feedback
 - View performance analytics
 - Time-based lesson completion tracking
+- AI-powered chatbot for practice
 
 ## 🛠️ Tech Stack
 
@@ -33,73 +34,89 @@ A modern learning management system that facilitates interaction between trainer
 - **API Documentation**: OpenAPI (Swagger)
 - **Testing**: pytest
 - **Code Style**: Black, isort
+- **AI Integration**: Google Gemini Pro
 
 ## 📋 Prerequisites
 
 - Python 3.9+
-- MongoDB 6.0+
-- pnpm (for development)
+- MongoDB 6.0+ (Atlas recommended for hackathon)
+- Docker & Docker Compose (optional, but recommended)
 
-## 🚀 Getting Started
+## 🚀 Quick Start for Hackathon Participants
 
-1. **Clone the repository**
+### 1. Clone the repository
 
-   ```bash
-   git clone https://github.com/byigitt/roundcall-backend-v2.git
-   cd roundcall-backend-v2
-   ```
-
-2. **Set up a virtual environment**
-
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: .\venv\Scripts\activate
-   ```
-
-3. **Install dependencies**
-
-   ```bash
-   pnpm install
-   ```
-
-4. **Set up environment variables**
-
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-5. **Run the application**
-   ```bash
-   uvicorn app.main:app --reload
-   ```
-
-The API will be available at `http://localhost:8000`
-API Documentation will be available at `http://localhost:8000/docs`
-
-## 🏗️ Project Structure
-
+```bash
+git clone https://github.com/byigitt/roundcall-backend-v2.git
+cd roundcall-backend-v2
 ```
-roundcall-backend-v2/
-├── app/
-│   ├── api/
-│   │   └── v1/
-│   │       ├── endpoints/
-│   │       └── api.py
-│   ├── core/
-│   │   ├── config.py
-│   │   ├── security.py
-│   │   └── database.py
-│   ├── models/
-│   │   ├── user.py
-│   │   ├── lesson.py
-│   │   └── analytics.py
-│   └── main.py
-├── tests/
-├── .env
-├── .gitignore
-└── README.md
+
+### 2. Set up environment variables
+
+Create a `.env` file in the root directory with the following content:
+
+```env
+# Database Configuration
+MONGODB_URL=mongodb+srv://your-atlas-url
+DATABASE_NAME=roundcallv2
+
+# Security
+# Generate a secure SECRET_KEY using Python:
+# python -c "import secrets; import base64; print(base64.b64encode(secrets.token_bytes(32)).decode())"
+SECRET_KEY=your-generated-base64-encoded-32-byte-key-here
+
+# API Keys
+GOOGLE_API_KEY=your-google-api-key-here  # Get from https://makersuite.google.com/app/apikey
+
+# Environment
+ENVIRONMENT=development
 ```
+
+### 3. Choose Your Installation Method
+
+#### A. Using Docker (Recommended for Hackathon)
+
+```bash
+# Build and start the containers
+docker-compose up -d --build
+
+# Check logs
+docker-compose logs -f
+```
+
+#### B. Manual Installation
+
+```bash
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the application
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### 4. Verify Installation
+
+- API will be available at `http://localhost:8000`
+- Swagger documentation at `http://localhost:8000/docs`
+- Try the health check endpoint: `http://localhost:8000/api/v1`
+
+## 🔑 Required API Keys & Services
+
+1. **MongoDB Atlas** (Free Tier)
+
+   - Sign up at [MongoDB Atlas](https://www.mongodb.com/cloud/atlas/register)
+   - Create a new cluster (Free tier is sufficient)
+   - Get your connection string
+   - Add your IP address to the allowlist
+
+2. **Google AI (Gemini Pro)** (Free)
+   - Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
+   - Create an API key
+   - Add it to your .env file
 
 ## 📚 API Documentation
 
@@ -110,56 +127,54 @@ The API provides comprehensive endpoints for:
 - Question Management
 - Progress Tracking
 - Analytics
+- AI Chatbot Integration
 
 Detailed API documentation is available at `/docs` when running the server.
 
-## 🔐 Authentication
+## 🔐 Authentication Flow
 
-The system uses JWT tokens with refresh token mechanism:
-
-- Access tokens expire after 30 minutes
-- Refresh tokens expire after 7 days
-- Tokens are stored securely in HTTP-only cookies
+1. Register a new user (Trainer/Trainee)
+2. Login to get access & refresh tokens
+3. Use access token in Authorization header: `Bearer <token>`
+4. Refresh token when access token expires
 
 ## 📊 Database Schema
 
-The system uses MongoDB with the following collections:
+See [DATABASE_MODELS.md](DATABASE_MODELS.md) for detailed schema information.
 
-- Users
-- Lessons
-- AssignedLessons
-- Analytics
-
-Each collection is properly indexed for optimal query performance.
-
-## 🔒 Security Features
-
-- Password hashing using bcrypt
-- JWT token authentication
-- Rate limiting
-- Input validation
-- CORS protection
-- HTTP-only cookies for tokens
-
-## 🧪 Running Tests
+## 🧪 Testing
 
 ```bash
+# Run tests
 pytest
-```
 
-For coverage report:
-
-```bash
+# Run tests with coverage
 pytest --cov=app --cov-report=term-missing
 ```
 
-## 📈 Performance Considerations
+## 🔍 Common Issues & Solutions
 
-- Indexed MongoDB queries
-- Caching for frequently accessed data
-- Rate limiting to prevent abuse
-- Pagination for large datasets
-- Efficient data validation
+1. **MongoDB Connection Issues**
+
+   - Check if your IP is whitelisted in MongoDB Atlas
+   - Verify connection string in .env
+   - Make sure DATABASE_NAME is set correctly
+
+2. **CORS Issues**
+
+   - Add your frontend URL to the origins list in main.py
+   - Check if you're using https/http correctly
+
+3. **JWT Issues**
+   - Ensure SECRET_KEY is set in .env
+   - Check if tokens are being sent correctly in Authorization header
+
+## 📈 Performance Tips
+
+- Use indexes for frequently queried fields
+- Implement pagination for large datasets
+- Cache frequently accessed data
+- Use appropriate HTTP methods
 
 ## 🤝 Contributing
 
@@ -173,15 +188,16 @@ pytest --cov=app --cov-report=term-missing
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 👨‍💻 Author
+## 👨‍💻 Authors
 
-**Wired** - [byigitt](https://github.com/byigitt)
+**Wired** - [byigitt](https://github.com/byigitt)<br>
 **Wired** - [phun333](https://github.com/phun333)
 
 ## 🙏 Acknowledgments
 
 - FastAPI for the amazing framework
 - MongoDB team for the robust database
+- Google for Gemini Pro API
 - All contributors who have helped shape this project
 
 ## 🚢 Deployment
