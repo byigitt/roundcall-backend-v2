@@ -184,6 +184,67 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - MongoDB team for the robust database
 - All contributors who have helped shape this project
 
+## 🚢 Deployment
+
+### Prerequisites
+
+- Docker and Docker Compose installed on your VPS
+- SSH access to your VPS
+- GitHub repository secrets configured
+
+### Automatic Deployment
+
+The project uses GitHub Actions for CI/CD. Every push to the main branch triggers:
+
+1. Running tests
+2. Building Docker images
+3. Deploying to VPS
+
+### Manual Deployment
+
+To deploy manually on your VPS:
+
+```bash
+# Clone the repository
+git clone https://github.com/byigitt/roundcall-backend-v2.git
+cd roundcall-backend-v2
+
+# Create and configure .env file
+cp .env.example .env
+# Edit .env with your configuration
+
+# Start the application
+docker-compose up -d
+```
+
+The application will be available at `http://your-vps-ip:8000`
+
+### GitHub Repository Configuration
+
+The following secrets need to be configured in your GitHub repository (Settings > Secrets and Variables > Actions):
+
+1. **VPS Access**
+
+   - `VPS_HOST`: Your VPS IP address
+   - `VPS_USERNAME`: Your VPS SSH username
+   - `VPS_SSH_KEY`: Your SSH private key
+
+2. **Application Configuration**
+   - `MONGODB_URL`: MongoDB connection URL
+   - `DATABASE_NAME`: Name of the MongoDB database
+   - `SECRET_KEY`: Secret key for JWT tokens
+
+### Environment Variables
+
+The following environment variables are automatically set up during deployment:
+
+```bash
+MONGODB_URL=<from GitHub secrets>
+DATABASE_NAME=<from GitHub secrets>
+SECRET_KEY=<from GitHub secrets>
+ENVIRONMENT=production
+```
+
 ---
 
 Made with ❤️ by [Wired](https://github.com/byigitt)
