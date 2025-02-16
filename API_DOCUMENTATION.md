@@ -175,8 +175,6 @@ Create a new lesson.
   "contentType": "Text", // "Text", "Video", or "Both"
   "textContent": "Python is a versatile programming language...",
   "videoURL": "https://example.com/video",
-  "difficulty": "beginner", // "beginner", "intermediate", "advanced"
-  "tags": ["programming", "python"],
   "questions": [
     {
       "questionText": "What is Python?",
@@ -197,8 +195,6 @@ Create a new lesson.
   "contentType": "Text",
   "textContent": "Python is a versatile programming language...",
   "videoURL": "https://example.com/video",
-  "difficulty": "beginner",
-  "tags": ["programming", "python"],
   "questions": [...],
   "createdBy": "trainer_id",
   "createdAt": "2024-02-15T21:51:00Z"
@@ -224,8 +220,6 @@ Get lessons (filtered by role - trainers see created lessons, trainees see assig
     "contentType": "Text",
     "textContent": "Python is a versatile programming language...",
     "videoURL": "https://example.com/video",
-    "difficulty": "beginner",
-    "tags": ["programming", "python"],
     "questions": [...],
     "createdBy": "trainer_id",
     "createdAt": "2024-02-15T21:51:00Z"

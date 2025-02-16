@@ -341,6 +341,31 @@ async def get_assigned_lessons(
         for lesson in assigned_lessons
     ]
 
+@router.get("/assigned/my-lessons", response_model=List[AssignedLesson])
+async def get_my_assigned_lessons(
+    current_user: UserInDB = Depends(get_current_user),
+    db=Depends(get_db)
+):
+    if current_user.role != UserRole.TRAINEE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only trainees can view their assigned lessons"
+        )
+    
+    # Get all lessons assigned to this trainee
+    assigned_lessons = await db[settings.DATABASE_NAME]["assignedLessons"].find({
+        "traineeID": str(current_user.id)
+    }).to_list(length=None)
+    
+    return [
+        AssignedLesson(**{
+            **lesson,
+            "id": str(lesson["_id"]),
+            "lessonID": str(lesson["lessonID"])
+        }) 
+        for lesson in assigned_lessons
+    ]
+
 @router.patch("/{lesson_id}", response_model=LessonInDB)
 async def patch_lesson(
     lesson_id: str,
@@ -397,4 +422,179 @@ async def patch_lesson(
     
     # Get updated lesson
     updated_lesson = await db[settings.DATABASE_NAME]["lessons"].find_one({"_id": ObjectId(lesson_id)})
-    return LessonInDB(**{**updated_lesson, "id": str(updated_lesson["_id"])}) 
+    return LessonInDB(**{**updated_lesson, "id": str(updated_lesson["_id"])})
+
+@router.patch("/assigned/{assigned_lesson_id}/progress", response_model=AssignedLesson)
+async def update_assigned_lesson_progress(
+    assigned_lesson_id: str,
+    progress_data: Dict[str, Any] = Body(...),
+    current_user: UserInDB = Depends(get_current_user),
+    db=Depends(get_db)
+):
+    if current_user.role != UserRole.TRAINEE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only trainees can update lesson progress"
+        )
+    
+    try:
+        # Check if assigned lesson exists and belongs to the trainee
+        assigned_lesson = await db[settings.DATABASE_NAME]["assignedLessons"].find_one({
+            "_id": ObjectId(assigned_lesson_id),
+            "traineeID": str(current_user.id)
+        })
+        
+        if not assigned_lesson:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Assigned lesson not found or you don't have access to it"
+            )
+        
+        # Prepare update data
+        update_data = {
+            "status": progress_data.get("status", assigned_lesson.get("status")),
+            "updatedAt": datetime.now(UTC)
+        }
+        
+        # Add timestamps based on status
+        if update_data["status"] == "In Progress" and not assigned_lesson.get("startedAt"):
+            update_data["startedAt"] = datetime.now(UTC)
+        elif update_data["status"] == "Completed" and not assigned_lesson.get("completedAt"):
+            update_data["completedAt"] = datetime.now(UTC)
+        
+        # Update the assigned lesson
+        await db[settings.DATABASE_NAME]["assignedLessons"].update_one(
+            {"_id": ObjectId(assigned_lesson_id)},
+            {"$set": update_data}
+        )
+        
+        # Get updated assigned lesson
+        updated_lesson = await db[settings.DATABASE_NAME]["assignedLessons"].find_one(
+            {"_id": ObjectId(assigned_lesson_id)}
+        )
+        
+        return AssignedLesson(**{
+            **updated_lesson,
+            "id": str(updated_lesson["_id"]),
+            "lessonID": str(updated_lesson["lessonID"])
+        })
+        
+    except Exception as e:
+        if "Invalid ObjectId" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid assigned lesson ID format"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating lesson progress: {str(e)}"
+        )
+
+@router.get("/{lesson_id}", response_model=LessonInDB)
+async def get_lesson(
+    lesson_id: str,
+    current_user: UserInDB = Depends(get_current_user),
+    db=Depends(get_db)
+):
+    try:
+        # Try to find the lesson
+        lesson = await db[settings.DATABASE_NAME]["lessons"].find_one({"_id": ObjectId(lesson_id)})
+        
+        if not lesson:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Lesson not found"
+            )
+        
+        # If user is a trainee, check if they have access to this lesson
+        if current_user.role == UserRole.TRAINEE:
+            assigned_lesson = await db[settings.DATABASE_NAME]["assignedLessons"].find_one({
+                "lessonID": ObjectId(lesson_id),
+                "traineeID": str(current_user.id)
+            })
+            
+            if not assigned_lesson:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You don't have access to this lesson"
+                )
+        # If user is a trainer, check if they created the lesson
+        elif current_user.role == UserRole.TRAINER and str(lesson["createdBy"]) != str(current_user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view your own lessons"
+            )
+        
+        return LessonInDB(**{**lesson, "id": str(lesson["_id"])})
+        
+    except Exception as e:
+        if "Invalid ObjectId" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid lesson ID format"
+            )
+        raise e
+
+@router.get("/assigned/{assigned_lesson_id}/details", response_model=LessonWithProgress)
+async def get_assigned_lesson_details(
+    assigned_lesson_id: str,
+    current_user: UserInDB = Depends(get_current_user),
+    db=Depends(get_db)
+):
+    try:
+        # Get the assigned lesson
+        assigned_lesson = await db[settings.DATABASE_NAME]["assignedLessons"].find_one({
+            "_id": ObjectId(assigned_lesson_id)
+        })
+        
+        if not assigned_lesson:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Assigned lesson not found"
+            )
+        
+        # Check access rights
+        if current_user.role == UserRole.TRAINEE and str(assigned_lesson["traineeID"]) != str(current_user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have access to this lesson"
+            )
+        elif current_user.role == UserRole.TRAINER and str(assigned_lesson["trainerID"]) != str(current_user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view your own assigned lessons"
+            )
+        
+        # Get the lesson details
+        lesson = await db[settings.DATABASE_NAME]["lessons"].find_one({
+            "_id": ObjectId(assigned_lesson["lessonID"])
+        })
+        
+        if not lesson:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Lesson not found"
+            )
+        
+        # Combine lesson and assignment data
+        lesson_with_progress = {
+            **lesson,
+            "id": str(lesson["_id"]),
+            "status": assigned_lesson["status"],
+            "startedAt": assigned_lesson.get("startedAt"),
+            "completedAt": assigned_lesson.get("completedAt"),
+            "assignedAt": assigned_lesson["assignedAt"],
+            "progress": 100 if assigned_lesson["status"] == "Completed" else (
+                50 if assigned_lesson["status"] == "In Progress" else 0
+            )
+        }
+        
+        return LessonWithProgress(**lesson_with_progress)
+        
+    except Exception as e:
+        if "Invalid ObjectId" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid assigned lesson ID format"
+            )
+        raise e 
