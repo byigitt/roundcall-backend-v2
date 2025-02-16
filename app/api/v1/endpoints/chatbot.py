@@ -12,18 +12,18 @@ from bson import ObjectId
 
 router = APIRouter()
 
-# Happy Customer profili
+# Happy Customer profile
 HAPPY_CUSTOMER_PROFILE = {
-    "profil": {
-        "Duygusal Durum": "Olumlu, pozitif, neşeli",
-        "Sabır Seviyesi": 8,
-        "İkna Edilebilirlik": 8,
-        "Konuşkanlık": 9,
-        "Zaman Duyarlılığı": 3,
-        "Teknik Bilgi": 6,
-        "Memnuniyet Eşiği": 5
+    "profile": {
+        "Emotional State": "Positive, cheerful, upbeat",
+        "Patience Level": 8,
+        "Persuadability": 8,
+        "Talkativeness": 9,
+        "Time Sensitivity": 3,
+        "Technical Knowledge": 6,
+        "Satisfaction Threshold": 5
     },
-    "başlangıç": "İyi günler! Komşum sizin kampanyanızdan bahsetti, memnun kalmış. Ben de fiber internet düşünüyorum."
+    "initial_message": "Hello! My neighbor mentioned your service package, and they're quite satisfied. I'm considering fiber internet."
 }
 
 def initialize_model():
@@ -42,14 +42,14 @@ async def start_chat_session(
             detail="Only trainees can use the chatbot"
         )
 
-    # Yeni bir sohbet oturumu oluştur
+    # Create a new chat session
     session = {
         "traineeID": current_user.id,
         "characterType": character_type,
         "messages": [
             {
                 "role": "customer",
-                "content": HAPPY_CUSTOMER_PROFILE["başlangıç"],
+                "content": HAPPY_CUSTOMER_PROFILE["initial_message"],
                 "timestamp": datetime.now(timezone.utc)
             }
         ],
@@ -57,11 +57,11 @@ async def start_chat_session(
         "updatedAt": datetime.now(timezone.utc),
         "isActive": True,
         "collectedInfo": {
-            "fiyat": False,
-            "taahhut": False,
-            "hiz": False,
-            "kurulum": False,
-            "cayma_bedeli": False
+            "price": False,
+            "commitment": False,
+            "speed": False,
+            "installation": False,
+            "cancellation_fee": False
         }
     }
 
@@ -77,7 +77,7 @@ async def send_message(
     current_user: UserInDB = Depends(get_current_user),
     db=Depends(get_db)
 ):
-    # Oturumu kontrol et
+    # Check session
     session = await db[settings.DATABASE_NAME]["chatSessions"].find_one({"_id": ObjectId(session_id)})
     if not session:
         raise HTTPException(
@@ -91,54 +91,54 @@ async def send_message(
             detail="You can only access your own chat sessions"
         )
 
-    # Temsilci (trainee) yanıtını kaydet
+    # Save agent (trainee) response
     agent_message = {
         "role": "agent",
         "content": message,
         "timestamp": datetime.now(timezone.utc)
     }
     
-    # Model'i başlat
+    # Initialize model
     model = initialize_model()
     
-    # Temsilci yanıtını analiz et
+    # Analyze agent response
     conversation_history = "\n".join([
         f"{msg['content']}"
-        for msg in session["messages"][-2:] if msg  # Sadece son 2 mesajı al
+        for msg in session["messages"][-2:] if msg  # Only take last 2 messages
     ])
     
     analysis = analyze_agent_response(model, message, conversation_history)
     
-    # Bilgi toplama durumunu güncelle
+    # Update information collection status
     info_analysis = analyze_response(model, message)
     collected_info = session.get("collectedInfo", {
-        "fiyat": False,
-        "taahhut": False,
-        "hiz": False,
-        "kurulum": False,
-        "cayma_bedeli": False
+        "price": False,
+        "commitment": False,
+        "speed": False,
+        "installation": False,
+        "cancellation_fee": False
     })
     
     for key in collected_info:
         if info_analysis.get(key, False):
             collected_info[key] = True
 
-    # Müşterinin bir sonraki yanıtını oluştur
+    # Generate customer's next response
     next_customer_message = generate_customer_response(
         model, 
-        message,  # Sadece son mesajı gönder
-        HAPPY_CUSTOMER_PROFILE["profil"],
+        message,  # Only send the last message
+        HAPPY_CUSTOMER_PROFILE["profile"],
         collected_info
     )
 
-    # Müşteri yanıtını kaydet
+    # Save customer response
     customer_message = {
         "role": "customer",
         "content": next_customer_message,
         "timestamp": datetime.now(timezone.utc)
     }
 
-    # Veritabanını güncelle
+    # Update database
     await db[settings.DATABASE_NAME]["chatSessions"].update_one(
         {"_id": ObjectId(session_id)},
         {
@@ -168,123 +168,123 @@ async def get_chat_sessions(
     return [ChatSession(**{**session, "id": str(session["_id"])}) for session in sessions]
 
 def analyze_response(model, response):
-    """Kullanıcının yanıtını analiz eder ve hangi bilgilerin toplandığını belirler."""
+    """Analyzes the user's response and determines which information has been collected."""
     prompt = f"""
-    Aşağıdaki müşteri yanıtını analiz et ve hangi bilgilerin sorulduğunu belirle:
+    Analyze the following customer response and determine which information was discussed:
     
-    Yanıt: {response}
+    Response: {response}
     
-    Şu konularda bilgi var mı (True/False olarak döndür):
-    - Fiyat bilgisi
-    - Taahhüt süresi
-    - İnternet hızı
-    - Kurulum detayları
-    - Cayma bedeli
+    Check if the following topics were discussed (return True/False):
+    - Price information
+    - Commitment period
+    - Internet speed
+    - Installation details
+    - Cancellation fee
     """
     
     result = model.generate_content(prompt)
     try:
         analysis = {
-            "fiyat": "fiyat" in response.lower() or "tl" in response.lower() or "lira" in response.lower(),
-            "taahhut": "taahhüt" in response.lower() or "süre" in response.lower(),
-            "hiz": "hız" in response.lower() or "mbps" in response.lower(),
-            "kurulum": "kurulum" in response.lower() or "montaj" in response.lower(),
-            "cayma_bedeli": "cayma" in response.lower() or "iptal" in response.lower()
+            "price": "price" in response.lower() or "cost" in response.lower() or "fee" in response.lower(),
+            "commitment": "commitment" in response.lower() or "contract" in response.lower() or "period" in response.lower(),
+            "speed": "speed" in response.lower() or "mbps" in response.lower() or "bandwidth" in response.lower(),
+            "installation": "installation" in response.lower() or "setup" in response.lower(),
+            "cancellation_fee": "cancellation" in response.lower() or "terminate" in response.lower()
         }
         return analysis
     except:
         return {
-            "fiyat": False,
-            "taahhut": False,
-            "hiz": False,
-            "kurulum": False,
-            "cayma_bedeli": False
+            "price": False,
+            "commitment": False,
+            "speed": False,
+            "installation": False,
+            "cancellation_fee": False
         }
 
 def analyze_agent_response(model, response, conversation_history):
-    """Temsilcinin yanıtını analiz eder ve performans metriklerini hesaplar."""
+    """Analyzes the agent's response and calculates performance metrics."""
     prompt = f"""
-    Bir müşteri temsilcisi adayının yanıtını değerlendir.
+    Evaluate a customer service representative trainee's response.
     
-    Konuşma Geçmişi:
+    Conversation History:
     {conversation_history}
     
-    Temsilci Yanıtı:
+    Agent Response:
     {response}
     
-    Aşağıdaki kriterlere göre 1-10 arası puan ver ve detaylı açıklama yap:
+    Rate on a scale of 1-10 and provide detailed feedback for the following criteria:
     
-    1. Profesyonellik (1-10):
-    - Uygun selamlama kullanımı
-    - Nazik ve saygılı dil
-    - Profesyonel kelime seçimi
+    1. Professionalism (1-10):
+    - Appropriate greeting
+    - Polite and respectful language
+    - Professional word choice
     
-    2. Empati (1-10):
-    - Müşteriyi dinleme ve anlama
-    - Müşterinin duygularını anlama
-    - Uygun duygusal tepkiler
+    2. Empathy (1-10):
+    - Listening and understanding
+    - Emotional awareness
+    - Appropriate emotional responses
     
-    3. Çözüm Odaklılık (1-10):
-    - Müşterinin ihtiyaçlarını anlama
-    - Doğru bilgileri verme
-    - Uygun çözümler sunma
+    3. Solution-Oriented (1-10):
+    - Understanding customer needs
+    - Providing accurate information
+    - Offering appropriate solutions
     
-    4. İletişim Becerisi (1-10):
-    - Açık ve anlaşılır ifadeler
-    - Akıcı diyalog
-    - İkna edici konuşma
+    4. Communication Skills (1-10):
+    - Clear and understandable expressions
+    - Fluid dialogue
+    - Persuasive communication
     
-    Her kriter için detaylı geri bildirim ver.
+    Provide detailed feedback for each criterion.
     """
     
     try:
         result = model.generate_content(prompt)
         return {
-            "profesyonellik": 8,  # Bu değerler model tarafından belirlenecek
-            "empati": 7,
-            "cozum_odaklilik": 8,
-            "iletisim": 7,
-            "genel_puan": 7.5,
-            "detayli_analiz": result.text
+            "professionalism": 8,  # These values will be determined by the model
+            "empathy": 7,
+            "solution_oriented": 8,
+            "communication": 7,
+            "overall_score": 7.5,
+            "detailed_analysis": result.text
         }
     except:
         return {
-            "profesyonellik": 5,
-            "empati": 5,
-            "cozum_odaklilik": 5,
-            "iletisim": 5,
-            "genel_puan": 5,
-            "detayli_analiz": "Analiz yapılamadı"
+            "professionalism": 5,
+            "empathy": 5,
+            "solution_oriented": 5,
+            "communication": 5,
+            "overall_score": 5,
+            "detailed_analysis": "Analysis could not be performed"
         }
 
 def generate_customer_response(model, last_message, profile, collected_info):
-    """Müşterinin bir sonraki yanıtını/sorusunu oluşturur."""
+    """Generates the customer's next response/question."""
     remaining_info = [
         key for key, value in collected_info.items() 
         if not value
     ]
     
     prompt = f"""
-    Sen bir internet servis sağlayıcısıyla görüşen potansiyel bir müşterisin.
-    Temsilcinin son mesajına doğal bir şekilde yanıt ver:
+    You are a potential customer talking to an internet service provider.
+    Respond naturally to the representative's last message:
 
-    Temsilcinin son mesajı: {last_message}
+    Representative's last message: {last_message}
     
-    Profil özelliklerin:
-    {json.dumps(profile, indent=2, ensure_ascii=False)}
+    Your profile characteristics:
+    {json.dumps(profile, indent=2)}
     
-    Henüz sormadığın konular:
+    Topics you haven't asked about yet:
     {', '.join(remaining_info)}
     
-    Lütfen:
-    1. Doğal ve kısa bir yanıt ver
-    2. Her seferinde sadece bir konu hakkında soru sor
-    3. Temsilcinin cevabına uygun şekilde yanıt ver
-    4. Eğer bir konuda bilgi aldıysan, yeni bir konu hakkında nazikçe soru sor
+    Please:
+    1. Give a natural and brief response
+    2. Ask about only one topic at a time
+    3. Respond appropriately to the representative's answer
+    4. If you've received information about one topic, politely ask about a new topic
     """
     
     try:
         result = model.generate_content(prompt)
         return result.text.strip()
     except:
-        return "Anlıyorum, peki internet paketlerinizin fiyatları nasıl?" 
+        return "I see, could you tell me about your internet package prices?" 
