@@ -5,12 +5,7 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
-    curl \
     && rm -rf /var/lib/apt/lists/*
-
-# Install pnpm
-RUN curl -fsSL https://get.pnpm.io/install.sh | sh -
-ENV PATH="/root/.local/share/pnpm:$PATH"
 
 # Copy requirements first for better caching
 COPY requirements.txt .

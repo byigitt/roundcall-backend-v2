@@ -10,26 +10,9 @@ services:
       - DATABASE_NAME=${DATABASE_NAME}
       - SECRET_KEY=${SECRET_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-    depends_on:
-      - mongodb
+      - ENVIRONMENT=${ENVIRONMENT}
     restart: always
-    networks:
-      - roundcall-network
-
-  mongodb:
-    image: mongo:6.0
-    ports:
-      - "27017:27017"
-    environment:
-      - MONGO_INITDB_DATABASE=${DATABASE_NAME}
-    volumes:
-      - mongodb_data:/data/db
-    networks:
-      - roundcall-network
 
 networks:
-  roundcall-network:
+  default:
     driver: bridge
-
-volumes:
-  mongodb_data:
