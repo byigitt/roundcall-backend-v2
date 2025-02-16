@@ -1,18 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.deps import get_current_user, get_db
 from app.models.user import UserInDB, UserRole
 from app.models.lesson import LessonCreate, LessonInDB, AssignedLesson, LessonWithProgress
-from typing import List, Dict
+from typing import List, Dict, Any
 from datetime import datetime, UTC
 from app.core.config import settings
 from bson import ObjectId
 
 router = APIRouter()
 
+@router.post("", response_model=LessonInDB, status_code=status.HTTP_201_CREATED)
 @router.post("/", response_model=LessonInDB, status_code=status.HTTP_201_CREATED)
 async def create_lesson(
-    lesson: LessonCreate,
+    lesson: LessonCreate = Body(...),
     current_user: UserInDB = Depends(get_current_user),
     db=Depends(get_db)
 ):
@@ -22,17 +23,20 @@ async def create_lesson(
             detail="Only trainers can create lessons"
         )
     
+    # Convert questions to dict for MongoDB storage
+    questions = [q.model_dump() for q in lesson.questions] if lesson.questions else []
+    
     lesson_dict = {
-        **lesson.model_dump(),
-        "createdBy": current_user.id,
+        **lesson.model_dump(exclude={"questions"}),  # Exclude questions to handle them separately
+        "questions": questions,  # Add converted questions
+        "createdBy": str(current_user.id),
         "createdAt": datetime.now(UTC)
     }
     
     result = await db[settings.DATABASE_NAME]["lessons"].insert_one(lesson_dict)
     created_lesson = await db[settings.DATABASE_NAME]["lessons"].find_one({"_id": result.inserted_id})
-    created_lesson["id"] = str(created_lesson["_id"])
     
-    return LessonInDB(**created_lesson)
+    return LessonInDB(**{**created_lesson, "id": str(created_lesson["_id"])})
 
 @router.get("", response_model=List[LessonInDB])
 @router.get("/", response_model=List[LessonInDB])
@@ -72,10 +76,12 @@ async def assign_lesson(
         )
     
     trainee_id = data.get("trainee_id")
-    if not trainee_id:
+    trainee_email = data.get("trainee_email")
+    
+    if not trainee_id and not trainee_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="trainee_id is required"
+            detail="Either trainee_id or trainee_email is required"
         )
     
     # Dersin var olduğunu kontrol et
@@ -87,14 +93,25 @@ async def assign_lesson(
         )
     
     # Dersin trainer'ı olduğunu kontrol et
-    if lesson["createdBy"] != current_user.id:
+    if str(lesson["createdBy"]) != str(current_user.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only assign your own lessons"
         )
     
-    # Trainee'nin var olduğunu kontrol et
-    trainee = await db[settings.DATABASE_NAME]["users"].find_one({"_id": ObjectId(trainee_id), "role": UserRole.TRAINEE})
+    # Trainee'yi bul (ID veya email ile)
+    trainee_query = {"role": UserRole.TRAINEE}
+    if trainee_id and ObjectId.is_valid(trainee_id):
+        trainee_query["_id"] = ObjectId(trainee_id)
+    elif trainee_email:
+        trainee_query["email"] = trainee_email
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid trainee_id format and no trainee_email provided"
+        )
+    
+    trainee = await db[settings.DATABASE_NAME]["users"].find_one(trainee_query)
     if not trainee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -104,7 +121,7 @@ async def assign_lesson(
     # Dersin zaten atanmış olup olmadığını kontrol et
     existing_assignment = await db[settings.DATABASE_NAME]["assignedLessons"].find_one({
         "lessonID": ObjectId(lesson_id),
-        "traineeID": ObjectId(trainee_id)
+        "traineeID": str(trainee["_id"])
     })
     if existing_assignment:
         raise HTTPException(
@@ -114,15 +131,15 @@ async def assign_lesson(
     
     assignment = {
         "lessonID": ObjectId(lesson_id),
-        "traineeID": ObjectId(trainee_id),
-        "trainerID": current_user.id,
+        "traineeID": str(trainee["_id"]),
+        "trainerID": str(current_user.id),
         "status": "Assigned",
         "assignedAt": datetime.utcnow()
     }
     
     await db[settings.DATABASE_NAME]["assignedLessons"].insert_one(assignment)
     
-    return {"message": "Lesson assigned successfully"}
+    return {"message": f"Lesson assigned successfully to {trainee.get('email', 'trainee')}"}
 
 @router.put("/{lesson_id}/status")
 async def update_lesson_status(
@@ -202,4 +219,182 @@ async def update_lesson(
     
     # Güncellenmiş dersi getir
     updated_lesson = await db[settings.DATABASE_NAME]["lessons"].find_one({"_id": ObjectId(lesson_id)})
-    return LessonInDB(**updated_lesson) 
+    return LessonInDB(**updated_lesson)
+
+@router.delete("/{lesson_id}", response_model=Dict[str, str])
+async def delete_lesson(
+    lesson_id: str,
+    current_user: UserInDB = Depends(get_current_user),
+    db=Depends(get_db)
+):
+    if current_user.role != UserRole.TRAINER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only trainers can delete lessons"
+        )
+    
+    # Check if lesson exists and belongs to the trainer
+    lesson = await db[settings.DATABASE_NAME]["lessons"].find_one({"_id": ObjectId(lesson_id)})
+    if not lesson:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lesson not found"
+        )
+    
+    if str(lesson["createdBy"]) != str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own lessons"
+        )
+    
+    # Delete the lesson
+    delete_result = await db[settings.DATABASE_NAME]["lessons"].delete_one({"_id": ObjectId(lesson_id)})
+    
+    if delete_result.deleted_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lesson not found"
+        )
+    
+    # Also delete any assigned lessons
+    await db[settings.DATABASE_NAME]["assignedLessons"].delete_many({"lessonID": lesson_id})
+    
+    return {"message": "Lesson deleted successfully"}
+
+@router.delete("/assigned/{assigned_lesson_id}", response_model=Dict[str, str])
+async def delete_assigned_lesson(
+    assigned_lesson_id: str,
+    current_user: UserInDB = Depends(get_current_user),
+    db=Depends(get_db)
+):
+    if current_user.role != UserRole.TRAINER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only trainers can unassign lessons"
+        )
+    
+    try:
+        # Check if assigned lesson exists
+        assigned_lesson = await db[settings.DATABASE_NAME]["assignedLessons"].find_one({"_id": ObjectId(assigned_lesson_id)})
+        
+        if not assigned_lesson:
+            # Try to find with string ID
+            assigned_lesson = await db[settings.DATABASE_NAME]["assignedLessons"].find_one({"lessonID": assigned_lesson_id})
+            if not assigned_lesson:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Assigned lesson not found. Please check the ID."
+                )
+        
+        # Check if the lesson belongs to the trainer
+        lesson = await db[settings.DATABASE_NAME]["lessons"].find_one({"_id": assigned_lesson["lessonID"]})
+        if not lesson or str(lesson["createdBy"]) != str(current_user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only unassign your own lessons"
+            )
+        
+        # Delete the assigned lesson
+        delete_result = await db[settings.DATABASE_NAME]["assignedLessons"].delete_one({"_id": assigned_lesson["_id"]})
+        
+        if delete_result.deleted_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Could not delete the assigned lesson"
+            )
+        
+        return {"message": "Lesson unassigned successfully"}
+        
+    except Exception as e:
+        if "Invalid ObjectId" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid lesson assignment ID format"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Error unassigning lesson: {str(e)}"
+        )
+
+@router.get("/assigned", response_model=List[AssignedLesson])
+async def get_assigned_lessons(
+    current_user: UserInDB = Depends(get_current_user),
+    db=Depends(get_db)
+):
+    if current_user.role != UserRole.TRAINER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only trainers can view assigned lessons"
+        )
+    
+    # Get all assigned lessons for lessons created by this trainer
+    assigned_lessons = await db[settings.DATABASE_NAME]["assignedLessons"].find({
+        "trainerID": str(current_user.id)
+    }).to_list(length=None)
+    
+    return [
+        AssignedLesson(**{
+            **lesson,
+            "id": str(lesson["_id"]),
+            "lessonID": str(lesson["lessonID"])
+        }) 
+        for lesson in assigned_lessons
+    ]
+
+@router.patch("/{lesson_id}", response_model=LessonInDB)
+async def patch_lesson(
+    lesson_id: str,
+    lesson_update: Dict[str, Any] = Body(...),
+    current_user: UserInDB = Depends(get_current_user),
+    db=Depends(get_db)
+):
+    if current_user.role != UserRole.TRAINER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only trainers can update lessons"
+        )
+    
+    # Check if lesson exists and belongs to the trainer
+    existing_lesson = await db[settings.DATABASE_NAME]["lessons"].find_one({"_id": ObjectId(lesson_id)})
+    if not existing_lesson:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lesson not found"
+        )
+    
+    if str(existing_lesson["createdBy"]) != str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only update your own lessons"
+        )
+    
+    # Prepare update data
+    update_data = {
+        **lesson_update,
+        "updatedAt": datetime.now(UTC)
+    }
+    
+    # If questions are being updated, ensure they are in the correct format
+    if "questions" in update_data:
+        questions = update_data["questions"]
+        update_data["questions"] = [
+            {
+                "questionText": q["questionText"],
+                "options": [
+                    {"text": opt["text"], "isCorrect": opt["isCorrect"]}
+                    for opt in q["options"]
+                ],
+                "timeLimit": q.get("timeLimit")
+            }
+            for q in questions
+        ]
+    
+    # Update the lesson
+    await db[settings.DATABASE_NAME]["lessons"].update_one(
+        {"_id": ObjectId(lesson_id)},
+        {"$set": update_data}
+    )
+    
+    # Get updated lesson
+    updated_lesson = await db[settings.DATABASE_NAME]["lessons"].find_one({"_id": ObjectId(lesson_id)})
+    return LessonInDB(**{**updated_lesson, "id": str(updated_lesson["_id"])}) 

@@ -8,6 +8,15 @@ class ContentType(str, Enum):
     VIDEO = "Video"
     BOTH = "Both"
 
+class QuestionOption(BaseModel):
+    text: str
+    isCorrect: bool
+
+class Question(BaseModel):
+    questionText: str
+    options: List[QuestionOption]
+    timeLimit: Optional[int] = None
+
 class LessonBase(BaseModel):
     title: str
     description: Optional[str] = None
@@ -17,13 +26,14 @@ class LessonBase(BaseModel):
     timeBased: Optional[int] = None
 
 class LessonCreate(LessonBase):
-    pass
+    questions: List[Question] = []
 
 class LessonInDB(LessonBase):
     id: str
     createdBy: str
     createdAt: datetime
     updatedAt: Optional[datetime] = None
+    questions: List[Question] = []
 
 class LessonStatus(str, Enum):
     ASSIGNED = "Assigned"
@@ -38,10 +48,11 @@ class AssignedLesson(BaseModel):
     status: LessonStatus
     startedAt: Optional[datetime] = None
     completedAt: Optional[datetime] = None
-    maxAttempts: int = 1
+    assignedAt: datetime
 
 class LessonWithProgress(LessonInDB):
     status: Optional[LessonStatus] = None
     progress: Optional[float] = None  # 0-100 arası yüzde
     startedAt: Optional[datetime] = None
-    completedAt: Optional[datetime] = None 
+    completedAt: Optional[datetime] = None
+    assignedAt: datetime 
