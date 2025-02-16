@@ -3,7 +3,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from app.core.config import settings
-from app.core.security import SECRET_KEY, ALGORITHM
+from app.core.security import ALGORITHM
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.database import get_database
 from app.models.user import UserInDB
@@ -25,7 +25,7 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
         
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         if user_id is None:
             raise credentials_exception
