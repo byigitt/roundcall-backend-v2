@@ -107,6 +107,24 @@ Authenticate user and get access token.
 }
 ```
 
+#### Refresh Token
+
+```http
+POST /users/refresh
+```
+
+Get new access and refresh tokens using the current refresh token.
+
+**Response:** (200 OK)
+
+```json
+{
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+  "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+  "token_type": "bearer"
+}
+```
+
 ### User Management
 
 #### Get Current User
@@ -496,35 +514,79 @@ Get analytics for a specific trainee.
 
 ## Models
 
-### User Roles
+### User Model
 
-```
-TRAINER: "Trainer"
-TRAINEE: "Trainee"
-```
-
-### Content Types
-
-```
-TEXT: "Text"
-VIDEO: "Video"
-BOTH: "Both"
-```
-
-### Lesson Status
-
-```
-ASSIGNED: "Assigned"
-IN_PROGRESS: "In Progress"
-COMPLETED: "Completed"
+```json
+{
+  "id": "string",
+  "email": "string",
+  "firstName": "string",
+  "lastName": "string",
+  "role": "Trainer | Trainee",
+  "createdAt": "datetime",
+  "updatedAt": "datetime"
+}
 ```
 
-### Difficulty Levels
+### Lesson Model
 
+```json
+{
+  "id": "string",
+  "title": "string",
+  "description": "string",
+  "contentType": "Text | Video | Both",
+  "textContent": "string",
+  "videoURL": "string",
+  "timeBased": "number", // Time limit in seconds (optional)
+  "createdBy": "string", // Reference to User ID
+  "createdAt": "datetime",
+  "questions": [
+    {
+      "questionText": "string",
+      "options": {
+        "A": "string",
+        "B": "string",
+        "C": "string",
+        "D": "string"
+      },
+      "correctAnswer": "string", // "A", "B", "C", or "D"
+      "timeLimit": "number" // Time limit per question in seconds (optional)
+    }
+  ]
+}
 ```
-BEGINNER: "beginner"
-INTERMEDIATE: "intermediate"
-ADVANCED: "advanced"
+
+### AssignedLesson Model
+
+```json
+{
+  "id": "string",
+  "lessonID": "string",
+  "traineeID": "string",
+  "trainerID": "string",
+  "status": "Assigned | In Progress | Completed",
+  "startedAt": "datetime",
+  "completedAt": "datetime",
+  "assignedAt": "datetime",
+  "maxAttempts": "number"
+}
+```
+
+### Analytics Model
+
+```json
+{
+  "id": "string",
+  "trainerID": "string",
+  "traineeID": "string",
+  "lessonID": "string",
+  "totalQuestions": "number",
+  "correctAnswers": "number",
+  "avgResponseTime": "number",
+  "attempts": "number",
+  "generatedAt": "datetime"
+}
 ```
 
 ## Rate Limiting
