@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import users, lessons, questions, analytics, assigned_lesson, chatbot
+from app.api.v1.endpoints import users, lessons, questions, analytics, assigned_lessons, chatbot
 
 api_router = APIRouter()
 
