@@ -48,7 +48,7 @@ async def start_chat_session(
         "characterType": character_type,
         "messages": [
             {
-                "role": "assistant",
+                "role": "customer",
                 "content": HAPPY_CUSTOMER_PROFILE["başlangıç"],
                 "timestamp": datetime.now(UTC)
             }
@@ -65,7 +65,7 @@ async def start_chat_session(
         }
     }
 
-    result = await db.chatSessions.insert_one(session)
+    result = await db[settings.DATABASE_NAME]["chatSessions"].insert_one(session)
     session["id"] = str(result.inserted_id)
     
     return ChatSession(**session)
@@ -78,7 +78,7 @@ async def send_message(
     db=Depends(get_db)
 ):
     # Oturumu kontrol et
-    session = await db.chatSessions.find_one({"_id": ObjectId(session_id)})
+    session = await db[settings.DATABASE_NAME]["chatSessions"].find_one({"_id": ObjectId(session_id)})
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -91,9 +91,9 @@ async def send_message(
             detail="You can only access your own chat sessions"
         )
 
-    # Mesajı kaydet
-    new_message = {
-        "role": "user",
+    # Temsilci (trainee) yanıtını kaydet
+    agent_message = {
+        "role": "agent",
         "content": message,
         "timestamp": datetime.now(UTC)
     }
@@ -101,8 +101,13 @@ async def send_message(
     # Model'i başlat
     model = initialize_model()
     
-    # Mesajı analiz et
-    analysis = analyze_agent_response(model, message, "\n".join([msg["content"] for msg in session["messages"]]))
+    # Temsilci yanıtını analiz et
+    conversation_history = "\n".join([
+        f"{msg['content']}"
+        for msg in session["messages"][-2:] if msg  # Sadece son 2 mesajı al
+    ])
+    
+    analysis = analyze_agent_response(model, message, conversation_history)
     
     # Bilgi toplama durumunu güncelle
     info_analysis = analyze_response(model, message)
@@ -118,30 +123,26 @@ async def send_message(
         if info_analysis.get(key, False):
             collected_info[key] = True
 
-    # Chatbot yanıtını oluştur
-    conversation_history = "\n".join([
-        f"[{'Müşteri' if msg['role'] == 'assistant' else 'Temsilci'}]: {msg['content']}"
-        for msg in session["messages"]
-    ])
-    bot_response = generate_agent_response(
+    # Müşterinin bir sonraki yanıtını oluştur
+    next_customer_message = generate_customer_response(
         model, 
-        conversation_history, 
+        message,  # Sadece son mesajı gönder
         HAPPY_CUSTOMER_PROFILE["profil"],
         collected_info
     )
 
-    # Chatbot yanıtını kaydet
-    bot_message = {
-        "role": "assistant",
-        "content": bot_response,
+    # Müşteri yanıtını kaydet
+    customer_message = {
+        "role": "customer",
+        "content": next_customer_message,
         "timestamp": datetime.now(UTC)
     }
 
     # Veritabanını güncelle
-    await db.chatSessions.update_one(
+    await db[settings.DATABASE_NAME]["chatSessions"].update_one(
         {"_id": ObjectId(session_id)},
         {
-            "$push": {"messages": {"$each": [new_message, bot_message]}},
+            "$push": {"messages": {"$each": [agent_message, customer_message]}},
             "$set": {
                 "updatedAt": datetime.now(UTC),
                 "collectedInfo": collected_info
@@ -150,7 +151,7 @@ async def send_message(
     )
 
     return ChatResponse(
-        message=bot_response,
+        message=next_customer_message,
         analysis=analysis,
         collectedInfo=collected_info
     )
@@ -160,21 +161,130 @@ async def get_chat_sessions(
     current_user: UserInDB = Depends(get_current_user),
     db=Depends(get_db)
 ):
-    sessions = await db.chatSessions.find({
+    sessions = await db[settings.DATABASE_NAME]["chatSessions"].find({
         "traineeID": current_user.id
     }).to_list(length=None)
     
     return [ChatSession(**{**session, "id": str(session["_id"])}) for session in sessions]
 
-# Happy Customer'dan alınan yardımcı fonksiyonları buraya ekleyin
 def analyze_response(model, response):
-    # happy_customer.py'dan kopyalanan fonksiyon
-    pass
+    """Kullanıcının yanıtını analiz eder ve hangi bilgilerin toplandığını belirler."""
+    prompt = f"""
+    Aşağıdaki müşteri yanıtını analiz et ve hangi bilgilerin sorulduğunu belirle:
+    
+    Yanıt: {response}
+    
+    Şu konularda bilgi var mı (True/False olarak döndür):
+    - Fiyat bilgisi
+    - Taahhüt süresi
+    - İnternet hızı
+    - Kurulum detayları
+    - Cayma bedeli
+    """
+    
+    result = model.generate_content(prompt)
+    try:
+        analysis = {
+            "fiyat": "fiyat" in response.lower() or "tl" in response.lower() or "lira" in response.lower(),
+            "taahhut": "taahhüt" in response.lower() or "süre" in response.lower(),
+            "hiz": "hız" in response.lower() or "mbps" in response.lower(),
+            "kurulum": "kurulum" in response.lower() or "montaj" in response.lower(),
+            "cayma_bedeli": "cayma" in response.lower() or "iptal" in response.lower()
+        }
+        return analysis
+    except:
+        return {
+            "fiyat": False,
+            "taahhut": False,
+            "hiz": False,
+            "kurulum": False,
+            "cayma_bedeli": False
+        }
 
 def analyze_agent_response(model, response, conversation_history):
-    # happy_customer.py'dan kopyalanan fonksiyon
-    pass
+    """Temsilcinin yanıtını analiz eder ve performans metriklerini hesaplar."""
+    prompt = f"""
+    Bir müşteri temsilcisi adayının yanıtını değerlendir.
+    
+    Konuşma Geçmişi:
+    {conversation_history}
+    
+    Temsilci Yanıtı:
+    {response}
+    
+    Aşağıdaki kriterlere göre 1-10 arası puan ver ve detaylı açıklama yap:
+    
+    1. Profesyonellik (1-10):
+    - Uygun selamlama kullanımı
+    - Nazik ve saygılı dil
+    - Profesyonel kelime seçimi
+    
+    2. Empati (1-10):
+    - Müşteriyi dinleme ve anlama
+    - Müşterinin duygularını anlama
+    - Uygun duygusal tepkiler
+    
+    3. Çözüm Odaklılık (1-10):
+    - Müşterinin ihtiyaçlarını anlama
+    - Doğru bilgileri verme
+    - Uygun çözümler sunma
+    
+    4. İletişim Becerisi (1-10):
+    - Açık ve anlaşılır ifadeler
+    - Akıcı diyalog
+    - İkna edici konuşma
+    
+    Her kriter için detaylı geri bildirim ver.
+    """
+    
+    try:
+        result = model.generate_content(prompt)
+        return {
+            "profesyonellik": 8,  # Bu değerler model tarafından belirlenecek
+            "empati": 7,
+            "cozum_odaklilik": 8,
+            "iletisim": 7,
+            "genel_puan": 7.5,
+            "detayli_analiz": result.text
+        }
+    except:
+        return {
+            "profesyonellik": 5,
+            "empati": 5,
+            "cozum_odaklilik": 5,
+            "iletisim": 5,
+            "genel_puan": 5,
+            "detayli_analiz": "Analiz yapılamadı"
+        }
 
-def generate_agent_response(model, conversation_history, profile, collected_info):
-    # happy_customer.py'dan kopyalanan fonksiyon
-    pass 
+def generate_customer_response(model, last_message, profile, collected_info):
+    """Müşterinin bir sonraki yanıtını/sorusunu oluşturur."""
+    remaining_info = [
+        key for key, value in collected_info.items() 
+        if not value
+    ]
+    
+    prompt = f"""
+    Sen bir internet servis sağlayıcısıyla görüşen potansiyel bir müşterisin.
+    Temsilcinin son mesajına doğal bir şekilde yanıt ver:
+
+    Temsilcinin son mesajı: {last_message}
+    
+    Profil özelliklerin:
+    {json.dumps(profile, indent=2, ensure_ascii=False)}
+    
+    Henüz sormadığın konular:
+    {', '.join(remaining_info)}
+    
+    Lütfen:
+    1. Doğal ve kısa bir yanıt ver
+    2. Her seferinde sadece bir konu hakkında soru sor
+    3. Temsilcinin cevabına uygun şekilde yanıt ver
+    4. Eğer bir konuda bilgi aldıysan, yeni bir konu hakkında nazikçe soru sor
+    """
+    
+    try:
+        result = model.generate_content(prompt)
+        return result.text.strip()
+    except:
+        return "Anlıyorum, peki internet paketlerinizin fiyatları nasıl?" 
