@@ -7,7 +7,7 @@ RoundCall v2 is a learning management system that facilitates interaction betwee
 ## Base URL
 
 ```
-https://localhost:8000/api/v1
+http://localhost:8000/api/v1
 ```
 
 ## Authentication
@@ -130,6 +130,32 @@ Get the profile of the currently authenticated user.
 }
 ```
 
+#### Get Assigned Trainees (Trainer Only)
+
+```http
+GET /users/assigned-trainees
+```
+
+Get all trainees assigned to your lessons with their progress information.
+
+**Response:** (200 OK)
+
+```json
+[
+  {
+    "id": "trainee_id",
+    "email": "trainee@example.com",
+    "firstName": "John",
+    "lastName": "Doe",
+    "totalAssignedLessons": 5,
+    "completedLessons": 2,
+    "inProgressLessons": 1,
+    "notStartedLessons": 2,
+    "completionRate": 40.0
+  }
+]
+```
+
 ### Lesson Management
 
 #### Create Lesson (Trainer Only)
@@ -149,7 +175,15 @@ Create a new lesson.
   "contentType": "Text", // "Text", "Video", or "Both"
   "textContent": "Python is a versatile programming language...",
   "videoURL": "https://example.com/video",
-  "timeBased": 60 // Optional, time limit in minutes
+  "difficulty": "beginner", // "beginner", "intermediate", "advanced"
+  "tags": ["programming", "python"],
+  "questions": [
+    {
+      "questionText": "What is Python?",
+      "options": ["A programming language", "A snake"],
+      "correctAnswer": 0
+    }
+  ]
 }
 ```
 
@@ -163,7 +197,9 @@ Create a new lesson.
   "contentType": "Text",
   "textContent": "Python is a versatile programming language...",
   "videoURL": "https://example.com/video",
-  "timeBased": 60,
+  "difficulty": "beginner",
+  "tags": ["programming", "python"],
+  "questions": [...],
   "createdBy": "trainer_id",
   "createdAt": "2024-02-15T21:51:00Z"
 }
@@ -188,13 +224,43 @@ Get lessons (filtered by role - trainers see created lessons, trainees see assig
     "contentType": "Text",
     "textContent": "Python is a versatile programming language...",
     "videoURL": "https://example.com/video",
-    "timeBased": 60,
+    "difficulty": "beginner",
+    "tags": ["programming", "python"],
+    "questions": [...],
     "createdBy": "trainer_id",
-    "createdAt": "2024-02-15T21:51:00Z",
-    "status": "In Progress", // Only for trainees
-    "progress": 45 // Percentage, only for trainees
+    "createdAt": "2024-02-15T21:51:00Z"
   }
 ]
+```
+
+#### Update Lesson (Trainer Only)
+
+```http
+PUT /lessons/{lesson_id}
+```
+
+Update an existing lesson. Only the trainer who created the lesson can update it.
+
+**Request Body:**
+Same as Create Lesson
+
+**Response:** (200 OK)
+Same as Create Lesson Response
+
+#### Delete Lesson (Trainer Only)
+
+```http
+DELETE /lessons/{lesson_id}
+```
+
+Delete a lesson and its associated assignments. Only the trainer who created the lesson can delete it.
+
+**Response:** (200 OK)
+
+```json
+{
+  "message": "Lesson deleted successfully"
+}
 ```
 
 #### Update Lesson Status (Trainee Only)
@@ -220,6 +286,61 @@ Update the status of an assigned lesson.
   "message": "Lesson status updated successfully"
 }
 ```
+
+#### Assign Lesson (Trainer Only)
+
+```http
+POST /lessons/{lesson_id}/assign
+```
+
+Assign a lesson to a trainee. You can identify the trainee either by their ID or email address.
+
+**Request Body:**
+
+```json
+{
+  // Option 1: Using trainee_id
+  "trainee_id": "trainee_user_id"
+
+  // Option 2: Using trainee_email
+  "trainee_email": "trainee@example.com"
+}
+```
+
+**Response:** (200 OK)
+
+```json
+{
+  "message": "Lesson assigned successfully to trainee@example.com"
+}
+```
+
+**Possible Errors:**
+
+- 400: Invalid trainee identification or lesson already assigned
+- 403: Not a trainer or not your lesson
+- 404: Lesson or trainee not found
+
+#### Unassign Lesson (Trainer Only)
+
+```http
+DELETE /lessons/assigned/{assigned_lesson_id}
+```
+
+Remove a lesson assignment from a trainee. Only the trainer who created the lesson can unassign it.
+
+**Response:** (200 OK)
+
+```json
+{
+  "message": "Lesson unassigned successfully"
+}
+```
+
+**Possible Errors:**
+
+- 403: Not a trainer or not your lesson
+- 404: Assigned lesson not found
 
 ### Question Management
 
@@ -404,6 +525,14 @@ IN_PROGRESS: "In Progress"
 COMPLETED: "Completed"
 ```
 
+### Difficulty Levels
+
+```
+BEGINNER: "beginner"
+INTERMEDIATE: "intermediate"
+ADVANCED: "advanced"
+```
+
 ## Rate Limiting
 
 The API implements rate limiting to prevent abuse. Limits are as follows:
@@ -413,7 +542,7 @@ The API implements rate limiting to prevent abuse. Limits are as follows:
 
 ## Security Recommendations
 
-1. Always use HTTPS
+1. Always use HTTPS in production
 2. Store tokens securely
 3. Never share your tokens
 4. Implement token refresh mechanism
